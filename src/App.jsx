@@ -7,10 +7,24 @@ import logo from "./school_logo.png"; // Place this file in src/
 
 export default function App() {
   // ===== Config =====
-  const PIN_CODE = "2022"; // PIN for managing students
-  const START_H = 8, START_M = 30; // for PDF export window
-  const END_H = 15, END_M = 35;    // for PDF export window
+  const APP_PASSWORD = "taftdhh2025"; // Page password (asked once per browser profile/device)
+  const PIN_CODE = "2022";            // PIN for managing students
+  const START_H = 8, START_M = 30;    // PDF export window start
+  const END_H = 15, END_M = 35;       // PDF export window end
   const PACIFIC_TZ = "America/Los_Angeles"; // daily reset reference
+
+  // ===== Auth (per browser profile via localStorage) =====
+  const [authorized, setAuthorized] = useState(() => localStorage.getItem("rt_auth_ok") === "1");
+  const [passwordInput, setPasswordInput] = useState("");
+  const handleLogin = (e) => {
+    e.preventDefault();
+    if (passwordInput === APP_PASSWORD) {
+      localStorage.setItem("rt_auth_ok", "1"); // persists in this browser profile
+      setAuthorized(true);
+    } else {
+      alert("Incorrect password.");
+    }
+  };
 
   // ===== Teachers & Students (persisted) =====
   const [teachers, setTeachers] = useState(() => {
@@ -39,10 +53,10 @@ export default function App() {
     const saved = localStorage.getItem("rt_logs");
     try {
       const parsed = saved ? JSON.parse(saved) : [];
-      return parsed.map(l => ({
+      return parsed.map((l) => ({
         ...l,
         ts: l.ts ? new Date(l.ts) : new Date(),
-        id: l.id || `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+        id: l.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       }));
     } catch {
       return [];
@@ -55,7 +69,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(
       "rt_logs",
-      JSON.stringify(logs.map(l => ({ ...l, ts: l.ts instanceof Date ? l.ts.toISOString() : l.ts })))
+      JSON.stringify(
+        logs.map((l) => ({ ...l, ts: l.ts instanceof Date ? l.ts.toISOString() : l.ts }))
+      )
     );
   }, [logs]);
 
@@ -73,39 +89,41 @@ export default function App() {
       timeZoneName: "shortOffset",
     });
     const parts = fmt.formatToParts(d);
-    const map = Object.fromEntries(parts.map(p => [p.type, p.value]));
+    const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
     let offset = "-08:00";
     if (map.timeZoneName && map.timeZoneName.startsWith("GMT")) {
-      const m = map.timeZoneName.match(/GMT([+-]\\d{1,2})(?::?(\\d{2}))?/);
+      const m = map.timeZoneName.match(/GMT([+-]\d{1,2})(?::?(\d{2}))?/);
       if (m) {
-        const hh = (m[1].length === 2 ? m[1] : (m[1][0] + m[1][1].padStart(2, "0")));
+        const hh =
+          m[1].length === 2 ? m[1] : m[1][0] + m[1][1].toString().padStart(2, "0");
         const mm = m[2] || "00";
         offset = `${hh}:${mm}`;
       }
     }
     return { y: map.year, M: map.month, d: map.day, offset };
   };
-
   const pacificDateAt = (base = new Date(), hh = 23, mm = 59, ss = 0) => {
     const p = getPacificParts(base);
-    const iso = `${p.y}-${p.M}-${p.d}T${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}:${String(ss).padStart(2,"0")}${p.offset}`;
+    const iso = `${p.y}-${p.M}-${p.d}T${String(hh).padStart(2, "0")}:${String(mm).padStart(
+      2,
+      "0"
+    )}:${String(ss).padStart(2, "0")}${p.offset}`;
     return new Date(iso);
   };
-
   const getLastResetBoundary = (now = new Date()) => {
     const today2359 = pacificDateAt(now, 23, 59, 0);
     if (now >= today2359) return today2359;
-    const yest = new Date(now); yest.setDate(yest.getDate() - 1);
+    const yest = new Date(now);
+    yest.setDate(yest.getDate() - 1);
     return pacificDateAt(yest, 23, 59, 0);
   };
-
   const getNextResetBoundary = (now = new Date()) => {
     const today2359 = pacificDateAt(now, 23, 59, 0);
     if (now < today2359) return today2359;
-    const tom = new Date(now); tom.setDate(tom.getDate() + 1);
+    const tom = new Date(now);
+    tom.setDate(tom.getDate() + 1);
     return pacificDateAt(tom, 23, 59, 0);
   };
-
   useEffect(() => {
     const lastResetIso = localStorage.getItem("rt_last_reset");
     const lastReset = lastResetIso ? new Date(lastResetIso).getTime() : 0;
@@ -130,18 +148,31 @@ export default function App() {
   // ===== Helpers =====
   const isTodayLocal = (d) => {
     const t = new Date();
-    return d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate();
+    return (
+      d.getFullYear() === t.getFullYear() &&
+      d.getMonth() === t.getMonth() &&
+      d.getDate() === t.getDate()
+    );
   };
 
   // ===== Actions =====
-  const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-  const canOut = !!selectedTeacher && !!selectedStudent && !active[selectedStudent];
-  const canIn = !!selectedTeacher && !!selectedStudent && !!active[selectedStudent];
+  const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const canOut =
+    !!selectedTeacher && !!selectedStudent && !active[selectedStudent];
+  const canIn =
+    !!selectedTeacher && !!selectedStudent && !!active[selectedStudent];
 
   const handleSignOut = () => {
     if (!selectedTeacher || !selectedStudent || active[selectedStudent]) return;
     const ts = new Date();
-    const entry = { id: makeId(), teacher: selectedTeacher, name: selectedStudent, action: "OUT", time: ts.toLocaleTimeString(), ts };
+    const entry = {
+      id: makeId(),
+      teacher: selectedTeacher,
+      name: selectedStudent,
+      action: "OUT",
+      time: ts.toLocaleTimeString(),
+      ts,
+    };
     setActive({ ...active, [selectedStudent]: entry.time });
     setLogs((prev) => [...prev, entry]);
   };
@@ -149,8 +180,16 @@ export default function App() {
   const handleSignIn = () => {
     if (!selectedTeacher || !selectedStudent || !active[selectedStudent]) return;
     const ts = new Date();
-    const entry = { id: makeId(), teacher: selectedTeacher, name: selectedStudent, action: "IN", time: ts.toLocaleTimeString(), ts };
-    const nextActive = { ...active }; delete nextActive[selectedStudent];
+    const entry = {
+      id: makeId(),
+      teacher: selectedTeacher,
+      name: selectedStudent,
+      action: "IN",
+      time: ts.toLocaleTimeString(),
+      ts,
+    };
+    const nextActive = { ...active };
+    delete nextActive[selectedStudent];
     setActive(nextActive);
     setLogs((prev) => [...prev, entry]);
   };
@@ -162,7 +201,6 @@ export default function App() {
     const m = d.getHours() * 60 + d.getMinutes();
     return m >= START_MINS && m < END_MINS;
   };
-
   const handleDownloadPDF = (teacher) => {
     const doc = new jsPDF();
     doc.setFontSize(16);
@@ -170,7 +208,9 @@ export default function App() {
     doc.setFontSize(12);
     doc.text(`Entries from today between 8:30 AM and 3:35 PM`, 20, 28);
 
-    const list = logs.filter(l => l.teacher === teacher && l.ts && isTodayLocal(l.ts) && inWindowLocal(l.ts));
+    const list = logs.filter(
+      (l) => l.teacher === teacher && l.ts && isTodayLocal(l.ts) && inWindowLocal(l.ts)
+    );
     if (list.length === 0) {
       doc.text("No activity logged yet.", 20, 44);
     } else {
@@ -179,7 +219,10 @@ export default function App() {
         const line = `${i + 1}. ${log.name} - ${log.action} at ${log.time}`;
         doc.text(line, 20, y);
         y += 8;
-        if (y > 280) { doc.addPage(); y = 20; }
+        if (y > 280) {
+          doc.addPage();
+          y = 20;
+        }
       });
     }
     doc.save(`${teacher.replace(/ /g, "_")}_restroom_log_today.pdf`);
@@ -188,7 +231,7 @@ export default function App() {
   // ===== Manage Students (Add / Edit / Delete, each requires PIN) =====
   const [newStudent, setNewStudent] = useState("");
   const [showManage, setShowManage] = useState(false);
-  const [editingStudent, setEditingStudent] = useState(null); // original name being edited
+  const [editingStudent, setEditingStudent] = useState(null);
   const [editValue, setEditValue] = useState("");
 
   const promptPin = () => {
@@ -208,9 +251,11 @@ export default function App() {
   const removeStudent = (student) => {
     if (!selectedTeacher) return;
     if (!promptPin()) return alert("Incorrect PIN.");
-    setTeachers({ ...teachers, [selectedTeacher]: teachers[selectedTeacher].filter(s => s !== student) });
+    setTeachers({
+      ...teachers,
+      [selectedTeacher]: teachers[selectedTeacher].filter((s) => s !== student),
+    });
     if (selectedStudent === student) setSelectedStudent("");
-    // If student is currently OUT, remove from active
     if (active[student]) {
       const nextActive = { ...active };
       delete nextActive[student];
@@ -236,11 +281,11 @@ export default function App() {
     if (teachers[selectedTeacher].includes(trimmed)) return alert("That name already exists.");
     if (!promptPin()) return alert("Incorrect PIN.");
 
-    // Update teachers list
-    const updatedList = teachers[selectedTeacher].map(s => (s === editingStudent ? trimmed : s));
+    const updatedList = teachers[selectedTeacher].map((s) =>
+      s === editingStudent ? trimmed : s
+    );
     setTeachers({ ...teachers, [selectedTeacher]: updatedList });
 
-    // Update active map key if needed
     if (active[editingStudent]) {
       const nextActive = { ...active };
       nextActive[trimmed] = nextActive[editingStudent];
@@ -248,18 +293,18 @@ export default function App() {
       setActive(nextActive);
     }
 
-    // Update logs for this teacher where name matches
-    setLogs(prev =>
-      prev.map(l => (l.teacher === selectedTeacher && l.name === editingStudent ? { ...l, name: trimmed } : l))
+    setLogs((prev) =>
+      prev.map((l) =>
+        l.teacher === selectedTeacher && l.name === editingStudent ? { ...l, name: trimmed } : l
+      )
     );
 
-    // Update selection if currently selected
     if (selectedStudent === editingStudent) setSelectedStudent(trimmed);
 
     cancelEditStudent();
   };
 
-  // ===== Derived: SHOW ONLY TODAY'S LOGS (no hour filter) =====
+  // ===== Derived: SHOW ONLY TODAY'S LOGS =====
   const logsByTeacherToday = useMemo(() => {
     const grouped = { "Lizette Lozano": [], "Yadira Reina": [] };
     logs.forEach((l) => {
@@ -290,8 +335,45 @@ export default function App() {
     );
   };
 
-  const todayDate = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const todayDate = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 
+  // ===== If not authorized, show lock screen =====
+  if (!authorized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+        <Card className="shadow max-w-md w-full">
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center mb-4">
+              <img src={logo} alt="School Logo" className="w-20 h-auto mb-2 max-w-full" />
+              <h1 className="text-xl font-bold text-center">Restroom Tracker | Taft DHH</h1>
+            </div>
+            <form onSubmit={handleLogin} className="space-y-3">
+              <label className="block text-sm text-gray-700">Enter Password</label>
+              <input
+                type="password"
+                className="w-full border rounded p-2"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="••••"
+                autoFocus
+              />
+              <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">Unlock</Button>
+              <p className="text-xs text-gray-500 text-center">
+                Access persists only on this browser profile/device until cookies/cache are cleared.
+              </p>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // ===== Main App =====
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       <div className="flex flex-col items-center mb-6">
@@ -300,7 +382,7 @@ export default function App() {
         <p className="text-lg font-semibold text-gray-700 text-center">{todayDate}</p>
       </div>
 
-      <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-4">
+      <div className="max-w-5xl mx-auto grid md-grid-cols-2 md:grid-cols-2 gap-4">
         {/* Left: Controls */}
         <Card className="shadow">
           <CardContent className="p-4">
@@ -312,11 +394,16 @@ export default function App() {
               <select
                 className="w-full border rounded p-2"
                 value={selectedTeacher}
-                onChange={(e) => { setSelectedTeacher(e.target.value); setSelectedStudent(""); }}
+                onChange={(e) => {
+                  setSelectedTeacher(e.target.value);
+                  setSelectedStudent("");
+                }}
               >
                 <option value="">-- Teacher --</option>
                 {Object.keys(teachers).map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
                 ))}
               </select>
             </div>
@@ -331,9 +418,12 @@ export default function App() {
                 disabled={!selectedTeacher}
               >
                 <option value="">-- Student --</option>
-                {selectedTeacher && teachers[selectedTeacher].map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
+                {selectedTeacher &&
+                  teachers[selectedTeacher].map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
               </select>
             </div>
 
@@ -346,13 +436,27 @@ export default function App() {
                 onChange={(e) => setNewStudent(e.target.value)}
                 className="flex-1 border rounded p-2"
               />
-              <Button onClick={addStudent} className="bg-blue-500 hover:bg-blue-600">Add</Button>
+              <Button onClick={addStudent} className="bg-blue-500 hover:bg-blue-600">
+                Add
+              </Button>
             </div>
 
             {/* Out / In */}
             <div className="flex gap-2">
-              <Button onClick={handleSignOut} disabled={!canOut} className={`w-1/2 ${canOut ? "bg-red-500 hover:bg-red-600" : "bg-red-300 cursor-not-allowed"}`}>Out</Button>
-              <Button onClick={handleSignIn} disabled={!canIn} className={`w-1/2 ${canIn ? "bg-green-500 hover:bg-green-600" : "bg-green-300 cursor-not-allowed"}`}>In</Button>
+              <Button
+                onClick={handleSignOut}
+                disabled={!canOut}
+                className={`w-1/2 ${canOut ? "bg-red-500 hover:bg-red-600" : "bg-red-300 cursor-not-allowed"}`}
+              >
+                Out
+              </Button>
+              <Button
+                onClick={handleSignIn}
+                disabled={!canIn}
+                className={`w-1/2 ${canIn ? "bg-green-500 hover:bg-green-600" : "bg-green-300 cursor-not-allowed"}`}
+              >
+                In
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -363,20 +467,32 @@ export default function App() {
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-xl font-semibold">Activity Log</h2>
             </div>
-            <p className="text-xs text-gray-500 mb-3">Showing all entries for <strong>today</strong>. Logs clear automatically at <strong>11:59 PM Pacific</strong>.</p>
+            <p className="text-xs text-gray-500 mb-3">
+              Showing all entries for <strong>today</strong>. Logs clear automatically at <strong>11:59 PM Pacific</strong>.
+            </p>
 
             <div className="space-y-6">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-semibold">Lizette Lozano</h3>
-                  <Button onClick={() => handleDownloadPDF("Lizette Lozano")} className="bg-gray-300 hover:bg-gray-400 text-sm">Download PDF</Button>
+                  <Button
+                    onClick={() => handleDownloadPDF("Lizette Lozano")}
+                    className="bg-gray-300 hover:bg-gray-400 text-sm"
+                  >
+                    Download PDF
+                  </Button>
                 </div>
                 {renderTeacherLogs("Lizette Lozano")}
               </div>
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-semibold">Yadira Reina</h3>
-                  <Button onClick={() => handleDownloadPDF("Yadira Reina")} className="bg-gray-300 hover:bg-gray-400 text-sm">Download PDF</Button>
+                  <Button
+                    onClick={() => handleDownloadPDF("Yadira Reina")}
+                    className="bg-gray-300 hover:bg-gray-400 text-sm"
+                  >
+                    Download PDF
+                  </Button>
                 </div>
                 {renderTeacherLogs("Yadira Reina")}
               </div>
@@ -385,8 +501,13 @@ export default function App() {
             {/* Manage Students toggle */}
             <div className="mt-6 border-t pt-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Manage Students {selectedTeacher ? `(${selectedTeacher})` : ""}</h3>
-                <Button onClick={() => setShowManage(v => !v)} className="bg-gray-500 hover:bg-gray-600 rounded-full p-2">
+                <h3 className="font-semibold">
+                  Manage Students {selectedTeacher ? `(${selectedTeacher})` : ""}
+                </h3>
+                <Button
+                  onClick={() => setShowManage((v) => !v)}
+                  className="bg-gray-500 hover:bg-gray-600 rounded-full p-2"
+                >
                   <Settings className="h-5 w-5 text-white" />
                 </Button>
               </div>
@@ -394,7 +515,10 @@ export default function App() {
               {showManage && selectedTeacher && (
                 <div className="mt-2 space-y-1">
                   {teachers[selectedTeacher].map((student) => (
-                    <div key={student} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                    <div
+                      key={student}
+                      className="flex items-center justify-between bg-gray-50 p-2 rounded"
+                    >
                       {editingStudent === student ? (
                         <div className="flex-1 flex items-center gap-2">
                           <input
@@ -403,10 +527,16 @@ export default function App() {
                             onChange={(e) => setEditValue(e.target.value)}
                             placeholder="Edit name"
                           />
-                          <Button onClick={saveEditStudent} className="bg-green-500 hover:bg-green-600 text-xs px-2 py-1">
+                          <Button
+                            onClick={saveEditStudent}
+                            className="bg-green-500 hover:bg-green-600 text-xs px-2 py-1"
+                          >
                             Save
                           </Button>
-                          <Button onClick={cancelEditStudent} className="bg-gray-300 hover:bg-gray-400 text-xs px-2 py-1">
+                          <Button
+                            onClick={cancelEditStudent}
+                            className="bg-gray-300 hover:bg-gray-400 text-xs px-2 py-1"
+                          >
                             Cancel
                           </Button>
                         </div>
@@ -414,10 +544,16 @@ export default function App() {
                         <>
                           <span className="flex-1">{student}</span>
                           <div className="flex items-center gap-2">
-                            <Button onClick={() => startEditStudent(student)} className="bg-amber-400 hover:bg-amber-500 text-xs px-2 py-1">
+                            <Button
+                              onClick={() => startEditStudent(student)}
+                              className="bg-amber-400 hover:bg-amber-500 text-xs px-2 py-1"
+                            >
                               Edit
                             </Button>
-                            <Button onClick={() => removeStudent(student)} className="bg-red-400 hover:bg-red-500 text-xs px-2 py-1">
+                            <Button
+                              onClick={() => removeStudent(student)}
+                              className="bg-red-400 hover:bg-red-500 text-xs px-2 py-1"
+                            >
                               Delete
                             </Button>
                           </div>
@@ -429,7 +565,9 @@ export default function App() {
               )}
 
               {showManage && !selectedTeacher && (
-                <p className="text-xs text-gray-500 mt-2">Select a teacher above to manage students.</p>
+                <p className="text-xs text-gray-500 mt-2">
+                  Select a teacher above to manage students.
+                </p>
               )}
             </div>
           </CardContent>

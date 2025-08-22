@@ -2,13 +2,8 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-<<<<<<< HEAD
     branches: [ main ]
   workflow_dispatch:
-=======
-    branches: [ main ]     # deploy on each push to main
-  workflow_dispatch:        # allow manual runs
->>>>>>> c09f5d9c344fc73d181c7ba87d4321c19409343a
 
 permissions:
   contents: read
@@ -32,13 +27,8 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-<<<<<<< HEAD
-      - name: Install dependencies
-        run: npm install
-=======
       - name: Install
         run: npm ci
->>>>>>> c09f5d9c344fc73d181c7ba87d4321c19409343a
 
       - name: Build
         run: npm run build
