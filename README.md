@@ -1,29 +1,38 @@
 # 🚻 Restroom Tracker | Taft DHH
 
-React + Vite + Tailwind restroom tracker.  
-- Tracks restroom OUT/IN per teacher/student.  
-- Shows only **today’s activity (8:00 AM – 4:00 PM)**.  
-- Auto‑resets logs **10:00 PM Pacific** daily.  
-- Exports **per‑teacher PDF logs**.  
-- Manage students with PIN = 2022.
+A React + Vite + Tailwind app for restroom out/in tracking with two teachers, per‑teacher logs & PDFs, PIN‑protected student management, and daily reset.
 
-## Local Dev
+## Features
+- Select **Teacher** (Lizette Lozano or Yadira Reina) → select **Student** → **Out/In**.
+- Shows entries for **today 8:30 AM – 3:35 PM** only (display filter).
+- **Logs persist** across reloads; **reset at 10:00 PM Pacific**.
+- **Download PDF** per teacher (only today’s window).
+- **Manage Students** (Add/Remove) requires **PIN 2022**.
+
+## Local development
 ```bash
 npm install
 npm run dev
 ```
 
-## Deploy to GitHub Pages
-Already configured (`vite.config.js` base: `/restroom-tracker/`).  
-Either use a GitHub Actions workflow or manual deploy.
+## Deploy to GitHub Pages (Actions)
+This repo includes a workflow at `.github/workflows/deploy.yml`.
+1. Commit & push to `main`:
+   ```bash
+   git init
+   git add .
+   git commit -m "Init Restroom Tracker | Taft DHH"
+   git branch -M main
+   git remote add origin https://github.com/htnxlausd/restroom-tracker.git
+   git push -u origin main
+   ```
+2. In GitHub: **Settings → Pages** → **Source: GitHub Actions**.
+3. If your org protects the `github-pages` environment, approve the deployment or relax protection.
 
-### Manual deploy (subtree)
-```bash
-npm run build
-git subtree split --prefix dist -b gh-pages-temp
-git push -f origin gh-pages-temp:gh-pages
-git branch -D gh-pages-temp
-```
+**Site URL:** `https://htnxlausd.github.io/restroom-tracker/`
 
-Then set **Settings → Pages → Deploy from branch → gh-pages (root)**.
+If you change the repository name, update `base` in `vite.config.js` accordingly.
 
+## Notes
+- Requires Node.js 18+ (Node 20 LTS recommended).
+- If you see `vite is not recognized`, use `npm run dev` or `npx vite`.
