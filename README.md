@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 🚻 Restroom Tracker | Taft DHH
 
 A React + Vite + Tailwind app for restroom out/in tracking with two teachers, per‑teacher logs & PDFs, PIN‑protected student management, and daily reset.
@@ -39,5 +38,3 @@ If you change the repository name, update `base` in `vite.config.js` accordingly
 - If you see `vite is not recognized`, use `npm run dev` or `npx vite`.
 =======
 A simple React app for restroom for students' sign-outs/ins for two teachers sharing one class room with separate activity logs, PDF export, and PIN-protected student management.
-
->>>>>>> c09f5d9c344fc73d181c7ba87d4321c19409343a
