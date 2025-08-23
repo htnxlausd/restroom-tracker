@@ -32,8 +32,8 @@ export default function App() {
     return saved
       ? JSON.parse(saved)
       : {
-          "Lizette Lozano": ["Alice", "Ben", "Charlie"],
-          "Yadira Reina": ["Diana", "Ethan", "Frank"],
+            "Lizette Lozano": ["Abner M.", "Alexia P.", "Angel C.", "Carter W.", "Emaily C.", "Genesis P.", "Jonathan E."],
+            "Yadira Reina": ["Sofia A.", "Issac G.", "Marisa P.", "Ariana R.", "Alondra C.", "Thanh D.", "Maya F.", "Samuel S.", "Abner M.", "Angel C."],
         };
   });
 
