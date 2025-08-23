@@ -3,7 +3,7 @@
 A React + Vite + Tailwind app for restroom out/in tracking with two teachers, per‑teacher logs & PDFs, PIN‑protected student management, and daily reset.
 
 ## Features
-- Select **Teacher** (Lizette Lozano or Yadira Reina) → select **Student** → **Out/In**.
+- Select **Teacher** → select **Student** → **Out/In**.
 - Shows entries for **today 8:30 AM – 3:35 PM** only (display filter).
 - **Logs persist** across reloads; **reset at 10:00 PM Pacific**.
 - **Download PDF** per teacher (only today’s window).
