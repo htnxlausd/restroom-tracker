@@ -1,578 +1,557 @@
-import React, { useEffect, useMemo, useState } from "react";
+import logo from './school_logo.png';
+import React, { useState, useEffect } from "react";
 import { Card, CardContent } from "./components/ui/card";
 import { Button } from "./components/ui/button";
-import { Settings } from "lucide-react";
-import jsPDF from "jspdf";
-import logo from "./school_logo.png"; // Place this file in src/
+import { X as XIcon } from "lucide-react";
+import { db } from './firebase';
 
-export default function App() {
-  // ===== Config =====
-  const APP_PASSWORD = "taftdhh2025"; // Page password (asked once per browser profile/device)
-  const PIN_CODE = "2022";            // PIN for managing students
-  const START_H = 8, START_M = 30;    // PDF export window start
-  const END_H = 15, END_M = 35;       // PDF export window end
-  const PACIFIC_TZ = "America/Los_Angeles"; // daily reset reference
+/**
+ * Password gate (client-side)
+ */
+function Gate({ children }) {
+  // sha256('taftdhh2025')
+  const PAGE_PASSWORD_HASH = "fc4ec433f9f79454a7e4588eff2d3ff9e3a1f062af1dd806a06e8d839387b386";
+  const [unlocked, setUnlocked] = useState(false);
+  const [input, setInput] = useState("");
 
-  // ===== Auth (per browser profile via localStorage) =====
-  const [authorized, setAuthorized] = useState(() => localStorage.getItem("rt_auth_ok") === "1");
-  const [passwordInput, setPasswordInput] = useState("");
-  const handleLogin = (e) => {
+  useEffect(() => {
+    const ok = sessionStorage.getItem("rt_gate_ok") === "1";
+    setUnlocked(ok);
+  }, []);
+
+  async function sha256(text) {
+    const enc = new TextEncoder().encode(text);
+    const buf = await crypto.subtle.digest("SHA-256", enc);
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function handleUnlock(e) {
     e.preventDefault();
-    if (passwordInput === APP_PASSWORD) {
-      localStorage.setItem("rt_auth_ok", "1"); // persists in this browser profile
-      setAuthorized(true);
+    const h = await sha256(input);
+    if (h === PAGE_PASSWORD_HASH) {
+      sessionStorage.setItem("rt_gate_ok", "1");
+      setUnlocked(true);
     } else {
       alert("Incorrect password.");
     }
-  };
+  }
 
-  // ===== Teachers & Students (persisted) =====
-  const [teachers, setTeachers] = useState(() => {
-    const saved = localStorage.getItem("rt_teachers");
-    return saved
-      ? JSON.parse(saved)
-      : {
-            "Lizette Lozano": ["Abner M.", "Alexia P.", "Angel C.", "Carter W.", "Emaily C.", "Genesis P.", "Jonathan E."],
-            "Yadira Reina": ["Sofia A.", "Issac G.", "Marisa P.", "Ariana R.", "Alondra C.", "Thanh D.", "Maya F.", "Samuel S.", "Abner M.", "Angel C."],
-        };
-  });
-
-  // ===== Selections =====
-  const [selectedTeacher, setSelectedTeacher] = useState("");
-  const [selectedStudent, setSelectedStudent] = useState("");
-
-  // ===== Active OUT map (who is currently out) =====
-  const [active, setActive] = useState(() => {
-    const saved = localStorage.getItem("rt_active");
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  // ===== Activity logs (persisted; oldest → latest) =====
-  // Each log: { id, teacher, name, action: 'OUT'|'IN', time: localized, ts: Date }
-  const [logs, setLogs] = useState(() => {
-    const saved = localStorage.getItem("rt_logs");
-    try {
-      const parsed = saved ? JSON.parse(saved) : [];
-      return parsed.map((l) => ({
-        ...l,
-        ts: l.ts ? new Date(l.ts) : new Date(),
-        id: l.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      }));
-    } catch {
-      return [];
-    }
-  });
-
-  // ===== Persist important state =====
-  useEffect(() => localStorage.setItem("rt_teachers", JSON.stringify(teachers)), [teachers]);
-  useEffect(() => localStorage.setItem("rt_active", JSON.stringify(active)), [active]);
-  useEffect(() => {
-    localStorage.setItem(
-      "rt_logs",
-      JSON.stringify(
-        logs.map((l) => ({ ...l, ts: l.ts instanceof Date ? l.ts.toISOString() : l.ts }))
-      )
-    );
-  }, [logs]);
-
-  // ===== Daily clear at 11:59 PM Pacific Time =====
-  const getPacificParts = (d = new Date()) => {
-    const fmt = new Intl.DateTimeFormat("en-CA", {
-      timeZone: PACIFIC_TZ,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-      timeZoneName: "shortOffset",
-    });
-    const parts = fmt.formatToParts(d);
-    const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
-    let offset = "-08:00";
-    if (map.timeZoneName && map.timeZoneName.startsWith("GMT")) {
-      const m = map.timeZoneName.match(/GMT([+-]\d{1,2})(?::?(\d{2}))?/);
-      if (m) {
-        const hh =
-          m[1].length === 2 ? m[1] : m[1][0] + m[1][1].toString().padStart(2, "0");
-        const mm = m[2] || "00";
-        offset = `${hh}:${mm}`;
-      }
-    }
-    return { y: map.year, M: map.month, d: map.day, offset };
-  };
-  const pacificDateAt = (base = new Date(), hh = 23, mm = 59, ss = 0) => {
-    const p = getPacificParts(base);
-    const iso = `${p.y}-${p.M}-${p.d}T${String(hh).padStart(2, "0")}:${String(mm).padStart(
-      2,
-      "0"
-    )}:${String(ss).padStart(2, "0")}${p.offset}`;
-    return new Date(iso);
-  };
-  const getLastResetBoundary = (now = new Date()) => {
-    const today2359 = pacificDateAt(now, 23, 59, 0);
-    if (now >= today2359) return today2359;
-    const yest = new Date(now);
-    yest.setDate(yest.getDate() - 1);
-    return pacificDateAt(yest, 23, 59, 0);
-  };
-  const getNextResetBoundary = (now = new Date()) => {
-    const today2359 = pacificDateAt(now, 23, 59, 0);
-    if (now < today2359) return today2359;
-    const tom = new Date(now);
-    tom.setDate(tom.getDate() + 1);
-    return pacificDateAt(tom, 23, 59, 0);
-  };
-  useEffect(() => {
-    const lastResetIso = localStorage.getItem("rt_last_reset");
-    const lastReset = lastResetIso ? new Date(lastResetIso).getTime() : 0;
-    const lastBoundary = getLastResetBoundary().getTime();
-
-    if (lastReset < lastBoundary) {
-      setLogs([]);
-      setActive({});
-      localStorage.setItem("rt_last_reset", new Date().toISOString());
-    }
-
-    const nextBoundary = getNextResetBoundary();
-    const ms = Math.max(0, nextBoundary.getTime() - Date.now());
-    const timer = setTimeout(() => {
-      setLogs([]);
-      setActive({});
-      localStorage.setItem("rt_last_reset", new Date().toISOString());
-    }, ms);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // ===== Helpers =====
-  const isTodayLocal = (d) => {
-    const t = new Date();
+  if (!unlocked) {
     return (
-      d.getFullYear() === t.getFullYear() &&
-      d.getMonth() === t.getMonth() &&
-      d.getDate() === t.getDate()
-    );
-  };
-
-  // ===== Actions =====
-  const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const canOut =
-    !!selectedTeacher && !!selectedStudent && !active[selectedStudent];
-  const canIn =
-    !!selectedTeacher && !!selectedStudent && !!active[selectedStudent];
-
-  const handleSignOut = () => {
-    if (!selectedTeacher || !selectedStudent || active[selectedStudent]) return;
-    const ts = new Date();
-    const entry = {
-      id: makeId(),
-      teacher: selectedTeacher,
-      name: selectedStudent,
-      action: "OUT",
-      time: ts.toLocaleTimeString(),
-      ts,
-    };
-    setActive({ ...active, [selectedStudent]: entry.time });
-    setLogs((prev) => [...prev, entry]);
-  };
-
-  const handleSignIn = () => {
-    if (!selectedTeacher || !selectedStudent || !active[selectedStudent]) return;
-    const ts = new Date();
-    const entry = {
-      id: makeId(),
-      teacher: selectedTeacher,
-      name: selectedStudent,
-      action: "IN",
-      time: ts.toLocaleTimeString(),
-      ts,
-    };
-    const nextActive = { ...active };
-    delete nextActive[selectedStudent];
-    setActive(nextActive);
-    setLogs((prev) => [...prev, entry]);
-  };
-
-  // ===== PDF per teacher (filtered to today's 8:30–3:35) =====
-  const START_MINS = START_H * 60 + START_M;
-  const END_MINS = END_H * 60 + END_M;
-  const inWindowLocal = (d) => {
-    const m = d.getHours() * 60 + d.getMinutes();
-    return m >= START_MINS && m < END_MINS;
-  };
-  const handleDownloadPDF = (teacher) => {
-    const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text(`${teacher} Restroom Activity Log`, 20, 20);
-    doc.setFontSize(12);
-    doc.text(`Entries from today between 8:30 AM and 3:35 PM`, 20, 28);
-
-    const list = logs.filter(
-      (l) => l.teacher === teacher && l.ts && isTodayLocal(l.ts) && inWindowLocal(l.ts)
-    );
-    if (list.length === 0) {
-      doc.text("No activity logged yet.", 20, 44);
-    } else {
-      let y = 44;
-      list.forEach((log, i) => {
-        const line = `${i + 1}. ${log.name} - ${log.action} at ${log.time}`;
-        doc.text(line, 20, y);
-        y += 8;
-        if (y > 280) {
-          doc.addPage();
-          y = 20;
-        }
-      });
-    }
-    doc.save(`${teacher.replace(/ /g, "_")}_restroom_log_today.pdf`);
-  };
-
-  // ===== Manage Students (Add / Edit / Delete, each requires PIN) =====
-  const [newStudent, setNewStudent] = useState("");
-  const [showManage, setShowManage] = useState(false);
-  const [editingStudent, setEditingStudent] = useState(null);
-  const [editValue, setEditValue] = useState("");
-
-  const promptPin = () => {
-    const entered = prompt("Enter 4-digit PIN:");
-    return entered === PIN_CODE;
-  };
-
-  const addStudent = () => {
-    if (!selectedTeacher || !newStudent.trim()) return;
-    if (!promptPin()) return alert("Incorrect PIN.");
-    const name = newStudent.trim();
-    if (teachers[selectedTeacher].includes(name)) return alert("That name already exists.");
-    setTeachers({ ...teachers, [selectedTeacher]: [...teachers[selectedTeacher], name] });
-    setNewStudent("");
-  };
-
-  const removeStudent = (student) => {
-    if (!selectedTeacher) return;
-    if (!promptPin()) return alert("Incorrect PIN.");
-    setTeachers({
-      ...teachers,
-      [selectedTeacher]: teachers[selectedTeacher].filter((s) => s !== student),
-    });
-    if (selectedStudent === student) setSelectedStudent("");
-    if (active[student]) {
-      const nextActive = { ...active };
-      delete nextActive[student];
-      setActive(nextActive);
-    }
-  };
-
-  const startEditStudent = (student) => {
-    setEditingStudent(student);
-    setEditValue(student);
-  };
-
-  const cancelEditStudent = () => {
-    setEditingStudent(null);
-    setEditValue("");
-  };
-
-  const saveEditStudent = () => {
-    if (!selectedTeacher || !editingStudent) return;
-    const trimmed = editValue.trim();
-    if (!trimmed) return alert("Name cannot be empty.");
-    if (trimmed === editingStudent) return cancelEditStudent();
-    if (teachers[selectedTeacher].includes(trimmed)) return alert("That name already exists.");
-    if (!promptPin()) return alert("Incorrect PIN.");
-
-    const updatedList = teachers[selectedTeacher].map((s) =>
-      s === editingStudent ? trimmed : s
-    );
-    setTeachers({ ...teachers, [selectedTeacher]: updatedList });
-
-    if (active[editingStudent]) {
-      const nextActive = { ...active };
-      nextActive[trimmed] = nextActive[editingStudent];
-      delete nextActive[editingStudent];
-      setActive(nextActive);
-    }
-
-    setLogs((prev) =>
-      prev.map((l) =>
-        l.teacher === selectedTeacher && l.name === editingStudent ? { ...l, name: trimmed } : l
-      )
-    );
-
-    if (selectedStudent === editingStudent) setSelectedStudent(trimmed);
-
-    cancelEditStudent();
-  };
-
-  // ===== Derived: SHOW ONLY TODAY'S LOGS =====
-  const logsByTeacherToday = useMemo(() => {
-    const grouped = { "Lizette Lozano": [], "Yadira Reina": [] };
-    logs.forEach((l) => {
-      if (!l.ts) return;
-      const d = l.ts instanceof Date ? l.ts : new Date(l.ts);
-      if (isTodayLocal(d)) {
-        if (!grouped[l.teacher]) grouped[l.teacher] = [];
-        grouped[l.teacher].push(l);
-      }
-    });
-    return grouped;
-  }, [logs]);
-
-  const renderTeacherLogs = (teacher) => {
-    const list = logsByTeacherToday[teacher] || [];
-    if (list.length === 0) return <p className="text-gray-500">No activity logged yet</p>;
-    return (
-      <div className="space-y-2">
-        {list.map((log, idx) => (
-          <div key={log.id} className="flex justify-between items-center bg-gray-50 p-2 rounded">
-            <span className="font-semibold w-8">{idx + 1}.</span>
-            <span className="flex-1">{log.name}</span>
-            <span className={log.action === "OUT" ? "text-red-600 font-medium" : "text-green-600 font-medium"}>{log.action}</span>
-            <span className="text-gray-500 text-sm w-28 text-right">{log.time}</span>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const todayDate = new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-
-  // ===== If not authorized, show lock screen =====
-  if (!authorized) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-        <Card className="shadow max-w-md w-full">
-          <CardContent className="p-6">
-            <div className="flex flex-col items-center mb-4">
-              <img src={logo} alt="School Logo" className="w-20 h-auto mb-2 max-w-full" />
-              <h1 className="text-xl font-bold text-center">Restroom Tracker | Taft DHH</h1>
-            </div>
-            <form onSubmit={handleLogin} className="space-y-3">
-              <label className="block text-sm text-gray-700">Enter Password</label>
-              <input
-                type="password"
-                className="w-full border rounded p-2"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="••••"
-                autoFocus
-              />
-              <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">Unlock</Button>
-              <p className="text-xs text-gray-500 text-center">
-                Access persists only on this browser profile/device until cookies/cache are cleared.
-              </p>
-            </form>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
+        <div className="bg-white rounded-2xl shadow-lg p-6 w-full max-w-sm space-y-4">
+          <h1 className="text-xl font-semibold text-center">Enter Password</h1>
+          <form onSubmit={handleUnlock} className="space-y-3">
+            <input
+              type="password"
+              className="w-full border rounded p-2"
+              placeholder="Password"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              autoFocus
+            />
+            <button type="submit" className="w-full bg-black text-white rounded p-2">Unlock</button>
+          </form>
+          <p className="text-xs text-gray-500 text-center">Protected access</p>
+        </div>
       </div>
     );
   }
 
-  // ===== Main App =====
+  return children;
+}
+
+// Lazy-load Firestore APIs when needed (helps keep initial bundle small)
+async function loadFirestore() {
+  return await import('firebase/firestore');
+}
+
+export default function App() {
+  const PIN_CODE = "2022";
+
+  const [teachers, setTeachers] = useState({
+    "Lizette Lozano": ["Abner M.", "Alexia P.", "Angel C.", "Carter W.", "Emaily C.", "Genesis P.", "Jonathan E."],
+    "Yadira Reina": ["Sofia A.", "Issac G.", "Marisa P.", "Ariana R.", "Alondra C.", "Thanh D.", "Maya F.", "Samuel S.", "Abner M.", "Angel C."]
+  });
+
+  // active: { [studentName]: timeSignedOut }
+  const [active, setActive] = useState({});
+  const [logs, setLogs] = useState([]);
+  const [selectedTeacher, setSelectedTeacher] = useState("");
+  const [selectedStudent, setSelectedStudent] = useState("");
+  const [newStudent, setNewStudent] = useState("");
+
+  // === Pacific Time helpers and daily auto-clear ===
+  function pacificDateString() {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    }).format(new Date());
+  }
+
+  function pacificDateKey() {
+    // Key like 2025-08-22 in Pacific time
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(new Date());
+    const y = parts.find(p => p.type === 'year').value;
+    const m = parts.find(p => p.type === 'month').value;
+    const d = parts.find(p => p.type === 'day').value;
+    return `${y}-${m}-${d}`;
+  }
+
+  // Week range (Mon–Fri) string in Pacific Time, uses en-dash
+  function weekRangePacificString() {
+    const now = new Date();
+    const dowStr = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      weekday: 'short'
+    }).format(now);
+    const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const dow = map[dowStr.slice(0, 3)];
+    const daysFromMonday = (dow + 6) % 7; // 0 if Mon, 6 if Sun
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - daysFromMonday);
+    const friday = new Date(monday);
+    friday.setDate(monday.getDate() + 4);
+
+    const fmtMonth = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', month: 'long' });
+    const fmtDay = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', day: 'numeric' });
+    const fmtYear = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', year: 'numeric' });
+
+    const mMonth = fmtMonth.format(monday);
+    const fMonth = fmtMonth.format(friday);
+    const mDay = fmtDay.format(monday);
+    const fDay = fmtDay.format(friday);
+    const mYear = fmtYear.format(monday);
+    const fYear = fmtYear.format(friday);
+
+    if (mYear === fYear) {
+      if (mMonth === fMonth) {
+        return `${mMonth} ${mDay}–${fDay}, ${mYear}`;
+      } else {
+        return `${mMonth} ${mDay}–${fMonth} ${fDay}, ${mYear}`;
+      }
+    } else {
+      return `${mMonth} ${mDay}, ${mYear}–${fMonth} ${fDay}, ${fYear}`;
+    }
+  }
+
+  const [todayPacific, setTodayPacific] = useState(pacificDateString());
+
+  useEffect(() => {
+    // Clear logs/active if the stored Pacific date key differs from today
+    const key = pacificDateKey();
+    const stored = localStorage.getItem('rt_pacific_date');
+    if (stored !== key) {
+      // Optional: also delete Firestore docs from previous day so everyone's views reset together
+      (async () => {
+        try {
+          if (stored) {
+            const { collection, query, where, getDocs, deleteDoc } = await loadFirestore();
+            const qDel = query(collection(db,'rt_logs'), where('dateKey','==', stored));
+            const snap = await getDocs(qDel);
+            for (const d of snap.docs) await deleteDoc(d.ref);
+          }
+        } catch (e) {
+          console.warn('Cleanup failed', e);
+        }
+      })();
+      setLogs([]);
+      setActive({});
+      localStorage.setItem('rt_pacific_date', key);
+    }
+    setTodayPacific(pacificDateString());
+    // Poll every minute to detect day change in PT and clear automatically
+    const id = setInterval(() => {
+      const k = pacificDateKey();
+      const s = localStorage.getItem('rt_pacific_date');
+      if (k !== s) {
+        setLogs([]);
+        setActive({});
+        localStorage.setItem('rt_pacific_date', k);
+        setTodayPacific(pacificDateString());
+      }
+    }, 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Sync logs from Firestore (today only) and compute 'active'
+  useEffect(() => {
+    let unsub = () => {};
+    (async () => {
+      const { collection, query, where, orderBy, onSnapshot } = await loadFirestore();
+      const key = pacificDateKey();
+      const q = query(
+        collection(db, 'rt_logs'),
+        where('dateKey', '==', key),
+        orderBy('ts', 'asc')
+      );
+      unsub = onSnapshot(q, (snap) => {
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const formatted = docs.map(d => ({
+          id: d.id,
+          teacher: d.teacher,
+          name: d.name,
+          action: d.action,
+          time: d.ts && d.ts.toDate ? new Date(d.ts.toDate()).toLocaleTimeString() : new Date().toLocaleTimeString()
+        }));
+        setLogs(formatted);
+        const act = {};
+        formatted.forEach(l => {
+          if (l.action === 'OUT') act[l.name] = l.time;
+          else if (l.action === 'IN') delete act[l.name];
+        });
+        setActive(act);
+      });
+    })();
+    return () => unsub();
+  }, [todayPacific]);
+
+  // Helpers
+  const promptPin = () => {
+    const entered = window.prompt("Enter PIN");
+    return entered === PIN_CODE;
+  };
+
+  const canSignOut =
+    selectedTeacher &&
+    selectedStudent &&
+    !active[selectedStudent] &&
+    teachers[selectedTeacher]?.includes(selectedStudent);
+
+  const canSignIn =
+    selectedTeacher &&
+    selectedStudent &&
+    !!active[selectedStudent] &&
+    teachers[selectedTeacher]?.includes(selectedStudent);
+
+  // Actions (write to Firestore)
+  const handleSignOut = async () => {
+    if (!canSignOut) return;
+    const { addDoc, collection, serverTimestamp } = await loadFirestore();
+    await addDoc(collection(db, 'rt_logs'), {
+      dateKey: pacificDateKey(),
+      teacher: selectedTeacher,
+      name: selectedStudent,
+      action: 'OUT',
+      ts: serverTimestamp()
+    });
+  };
+
+  const handleSignIn = async () => {
+    if (!canSignIn) return;
+    const { addDoc, collection, serverTimestamp } = await loadFirestore();
+    await addDoc(collection(db, 'rt_logs'), {
+      dateKey: pacificDateKey(),
+      teacher: selectedTeacher,
+      name: selectedStudent,
+      action: 'IN',
+      ts: serverTimestamp()
+    });
+  };
+
+  const handleAddStudent = () => {
+    if (!selectedTeacher || !newStudent.trim()) return;
+    if (!promptPin()) return alert("Incorrect PIN.");
+    const name = newStudent.trim();
+    if (teachers[selectedTeacher].includes(name)) {
+      alert("Student already exists.");
+      return;
+    }
+    setTeachers({
+      ...teachers,
+      [selectedTeacher]: [...teachers[selectedTeacher], name].sort((a,b)=>a.localeCompare(b))
+    });
+    setNewStudent("");
+  };
+
+  const handleRemoveStudent = (student) => {
+    if (!selectedTeacher) return;
+    if (!promptPin()) return alert("Incorrect PIN.");
+    setTeachers({
+      ...teachers,
+      [selectedTeacher]: teachers[selectedTeacher].filter((s) => s !== student).sort((a,b)=>a.localeCompare(b))
+    });
+    if (selectedStudent === student) setSelectedStudent("");
+  };
+
+  const handleRemoveLastLog = async (teacher) => {
+    const teacherLogs = logs.filter(log => log.teacher === teacher);
+    if (teacherLogs.length === 0) return;
+    if (!promptPin()) return alert("Incorrect PIN.");
+    const lastLog = teacherLogs[teacherLogs.length - 1];
+    if (!lastLog.id) return;
+    const { deleteDoc, doc } = await loadFirestore();
+    await deleteDoc(doc(db, 'rt_logs', lastLog.id));
+  };
+
+  const handleDownloadPDF = async (teacher) => {
+    const { default: jsPDF } = await import('jspdf');
+    const doc = new jsPDF();
+
+    // Title
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    const title = `Restroom Activity Log | ${teacher} (${weekRangePacificString()})`;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    doc.text(title, pageWidth / 2, 18, { align: "center" });
+
+    // Prepare rows by pairing OUT/IN per student
+    const teacherLogs = logs.filter(l => l.teacher === teacher);
+    const pending = {}; // name -> timeOut
+    const rows = [];    // {name, date, out, in}
+
+    // Date column for PDF (M/D/YY in Pacific)
+    const datePacific = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      month: 'numeric',
+      day: 'numeric',
+      year: '2-digit'
+    }).format(new Date());
+
+    teacherLogs.forEach((log) => {
+      const name = log.name;
+      if (log.action === "OUT") {
+        if (!pending[name]) {
+          pending[name] = log.time;
+        } else {
+          rows.push({ name, date: datePacific, out: pending[name], in: "" });
+          pending[name] = log.time;
+        }
+      } else if (log.action === "IN") {
+        if (pending[name]) {
+          rows.push({ name, date: datePacific, out: pending[name], in: log.time });
+          delete pending[name];
+        } else {
+          rows.push({ name, date: datePacific, out: "", in: log.time });
+        }
+      }
+    });
+    Object.keys(pending).forEach(name => {
+      rows.push({ name, date: datePacific, out: pending[name], in: "" });
+    });
+
+    if (rows.length === 0) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(12);
+      doc.text("No activity recorded.", 20, 30);
+      doc.save(`${teacher}_restroom_log.pdf`);
+      return;
+    }
+
+    // Table layout
+    const marginLeft = 15;
+    const startY = 30;
+    const rowH = 8;
+
+    const colW = {
+      num: 12,
+      name: 60,
+      date: 36,
+      out: 36,
+      in: 36
+    };
+    const tableWidth = colW.num + colW.name + colW.date + colW.out + colW.in;
+
+    // Header row (dark gray with white text)
+    let y = startY;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setFillColor(60, 60, 60);
+    doc.setTextColor(255, 255, 255);
+    doc.rect(marginLeft, y - rowH + 2, tableWidth, rowH, "F");
+    doc.text("#", marginLeft + 3, y);
+    doc.text("Name", marginLeft + colW.num + 3, y);
+    doc.text("Date", marginLeft + colW.num + colW.name + 3, y);
+    doc.text("Time Out", marginLeft + colW.num + colW.name + colW.date + 3, y);
+    doc.text("Time In", marginLeft + colW.num + colW.name + colW.date + colW.out + 3, y);
+    doc.setTextColor(0, 0, 0);
+
+    // Rows
+    doc.setFont("helvetica", "normal");
+    rows.forEach((r, idx) => {
+      y += rowH;
+      // Page break
+      if (y > doc.internal.pageSize.getHeight() - 15) {
+        doc.addPage();
+        y = startY;
+        // Repeat header on new page
+        doc.setFont("helvetica", "bold");
+        doc.setFillColor(60, 60, 60);
+        doc.setTextColor(255, 255, 255);
+        doc.rect(marginLeft, y - rowH + 2, tableWidth, rowH, "F");
+        doc.text("#", marginLeft + 3, y);
+        doc.text("Name", marginLeft + colW.num + 3, y);
+        doc.text("Date", marginLeft + colW.num + colW.name + 3, y);
+        doc.text("Time Out", marginLeft + colW.num + colW.name + colW.date + 3, y);
+        doc.text("Time In", marginLeft + colW.num + colW.name + colW.date + colW.out + 3, y);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont("helvetica", "normal");
+      }
+
+      // Alternating row fill (light gray)
+      if (idx % 2 === 0) {
+        doc.setFillColor(245, 245, 245);
+        doc.rect(marginLeft, y - rowH + 2, tableWidth, rowH, "F");
+      }
+
+      const xNum = marginLeft + 3;
+      const xName = marginLeft + colW.num + 3;
+      const xDate = marginLeft + colW.num + colW.name + 3;
+      const xOut = marginLeft + colW.num + colW.name + colW.date + 3;
+      const xIn  = marginLeft + colW.num + colW.name + colW.date + colW.out + 3;
+
+      doc.text(String(idx + 1), xNum, y);
+      doc.text(r.name, xName, y);
+      doc.text(r.date, xDate, y);
+      doc.text(r.out || "-", xOut, y);
+      doc.text(r.in || "-", xIn, y);
+    });
+
+    doc.save(`${teacher}_restroom_log.pdf`);
+  };
+
+  const renderLogsByTeacher = (teacher) => {
+    const teacherLogs = logs.filter(log => log.teacher === teacher);
+    if (teacherLogs.length === 0) return <p className="text-gray-500">No activity yet</p>;
+    return teacherLogs.map((log, i) => {
+      const isLast = i === teacherLogs.length - 1;
+      return (
+        <div key={i} className="flex justify-between items-center bg-gray-50 p-2 rounded">
+          <span className="font-semibold">{i + 1}.</span>
+          <span>{log.name}</span>
+          <span className={log.action === "OUT" ? "text-red-500" : "text-green-500"}>{log.action}</span>
+          <span className="text-gray-400 text-sm">{log.time}</span>
+          {isLast && (
+            <button
+              onClick={() => handleRemoveLastLog(teacher)}
+              className="ml-2 text-red-500 hover:text-red-700"
+              title="Remove last log"
+            >
+              <XIcon size={16} />
+            </button>
+          )}
+        </div>
+      );
+    });
+  };
+
   return (
-    <div className="min-h-screen bg-gray-100 p-6">
-      <div className="flex flex-col items-center mb-6">
-        <img src={logo} alt="School Logo" className="w-32 h-auto mb-2 max-w-full" />
-        <h1 className="text-2xl md:text-3xl font-bold text-center">🚻 Restroom Tracker | Taft DHH</h1>
-        <p className="text-lg font-semibold text-gray-700 text-center">{todayDate}</p>
-      </div>
+    <Gate>
+      <div className="min-h-screen bg-gray-100 p-6 flex flex-col items-center">
+        <Card className="w-full max-w-3xl">
+          <CardContent className="p-4 space-y-4">
 
-      <div className="max-w-5xl mx-auto grid md-grid-cols-2 md:grid-cols-2 gap-4">
-        {/* Left: Controls */}
-        <Card className="shadow">
-          <CardContent className="p-4">
-            <h2 className="text-xl font-semibold mb-3">Select</h2>
+            {/* Header inside card */}
+            <div className="flex flex-col items-center mb-4">
+              <img src={logo} alt="School Logo" className="w-32 mb-2" />
+              <h1 className="text-3xl font-bold text-center">🚻 Restroom Tracker | Taft DHH</h1>
+            </div>
 
-            {/* Teacher */}
-            <div className="mb-3">
-              <label className="block text-sm text-gray-700 mb-1">Teacher</label>
+            {/* Activity header & date */}
+            <div className="mb-2">
+              <h2 className="text-xl font-semibold">Activity Log — {todayPacific}</h2>
+              <p className="text-sm text-gray-600">
+                Showing all entries for today. Logs clear automatically daily at 11:59 PM Pacific.
+              </p>
+            </div>
+
+            {/* Teacher select */}
+            <div className="flex space-x-2">
               <select
-                className="w-full border rounded p-2"
+                className="p-2 border rounded w-1/2"
                 value={selectedTeacher}
-                onChange={(e) => {
-                  setSelectedTeacher(e.target.value);
-                  setSelectedStudent("");
-                }}
+                onChange={(e) => { setSelectedTeacher(e.target.value); setSelectedStudent(""); }}
               >
                 <option value="">-- Teacher --</option>
-                {Object.keys(teachers).map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
+                {Object.keys(teachers).sort((a,b)=>a.localeCompare(b)).map((teacher) => (
+                  <option key={teacher} value={teacher}>{teacher}</option>
                 ))}
               </select>
             </div>
 
-            {/* Student */}
-            <div className="mb-4">
-              <label className="block text-sm text-gray-700 mb-1">Student</label>
-              <select
-                className="w-full border rounded p-2"
-                value={selectedStudent}
-                onChange={(e) => setSelectedStudent(e.target.value)}
-                disabled={!selectedTeacher}
-              >
-                <option value="">-- Student --</option>
-                {selectedTeacher &&
-                  teachers[selectedTeacher].map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
+            {/* Student select */}
+            {selectedTeacher && (
+              <div className="flex space-x-2">
+                <select
+                  className="p-2 border rounded w-1/2"
+                  value={selectedStudent}
+                  onChange={(e) => setSelectedStudent(e.target.value)}
+                >
+                  <option value="">-- Student --</option>
+                  {[...teachers[selectedTeacher]].sort((a,b)=>a.localeCompare(b)).map((name) => (
+                    <option key={name} value={name}>{name}</option>
                   ))}
-              </select>
-            </div>
+                </select>
+              </div>
+            )}
 
-            {/* Add student (PIN) */}
-            <div className="flex gap-2 mb-4">
-              <input
-                type="text"
-                placeholder="Add new student"
-                value={newStudent}
-                onChange={(e) => setNewStudent(e.target.value)}
-                className="flex-1 border rounded p-2"
-              />
-              <Button onClick={addStudent} className="bg-blue-500 hover:bg-blue-600">
-                Add
-              </Button>
-            </div>
-
-            {/* Out / In */}
-            <div className="flex gap-2">
+            {/* Out / In buttons */}
+            <div className="flex space-x-2">
               <Button
+                className={`px-4 py-2 rounded ${canSignOut ? 'bg-red-500 text-white' : 'bg-gray-300 text-gray-600 cursor-not-allowed'}`}
                 onClick={handleSignOut}
-                disabled={!canOut}
-                className={`w-1/2 ${canOut ? "bg-red-500 hover:bg-red-600" : "bg-red-300 cursor-not-allowed"}`}
+                disabled={!canSignOut}
               >
                 Out
               </Button>
               <Button
+                className={`px-4 py-2 rounded ${canSignIn ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-600 cursor-not-allowed'}`}
                 onClick={handleSignIn}
-                disabled={!canIn}
-                className={`w-1/2 ${canIn ? "bg-green-500 hover:bg-green-600" : "bg-green-300 cursor-not-allowed"}`}
+                disabled={!canSignIn}
               >
                 In
               </Button>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Right: Activity Log */}
-        <Card className="shadow relative">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="text-xl font-semibold">Activity Log</h2>
-            </div>
-            <p className="text-xs text-gray-500 mb-3">
-              Showing all entries for <strong>today</strong>. Logs clear automatically at <strong>11:59 PM Pacific</strong>.
-            </p>
-
-            <div className="space-y-6">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold">Lizette Lozano</h3>
-                  <Button
-                    onClick={() => handleDownloadPDF("Lizette Lozano")}
-                    className="bg-gray-300 hover:bg-gray-400 text-sm"
-                  >
-                    Download PDF
-                  </Button>
-                </div>
-                {renderTeacherLogs("Lizette Lozano")}
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold">Yadira Reina</h3>
-                  <Button
-                    onClick={() => handleDownloadPDF("Yadira Reina")}
-                    className="bg-gray-300 hover:bg-gray-400 text-sm"
-                  >
-                    Download PDF
-                  </Button>
-                </div>
-                {renderTeacherLogs("Yadira Reina")}
-              </div>
-            </div>
-
-            {/* Manage Students toggle */}
-            <div className="mt-6 border-t pt-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold">
-                  Manage Students {selectedTeacher ? `(${selectedTeacher})` : ""}
-                </h3>
-                <Button
-                  onClick={() => setShowManage((v) => !v)}
-                  className="bg-gray-500 hover:bg-gray-600 rounded-full p-2"
-                >
-                  <Settings className="h-5 w-5 text-white" />
+            {/* Add / Remove student (PIN gated) */}
+            {selectedTeacher && (
+              <div className="flex space-x-2">
+                <input
+                  type="text"
+                  className="p-2 border rounded w-full"
+                  placeholder="Add new student"
+                  value={newStudent}
+                  onChange={(e) => setNewStudent(e.target.value)}
+                />
+                <Button className="px-4 py-2 rounded bg-blue-500 text-white" onClick={handleAddStudent}>
+                  Add
                 </Button>
+                {selectedStudent && (
+                  <Button className="px-4 py-2 rounded bg-gray-800 text-white" onClick={() => handleRemoveStudent(selectedStudent)}>
+                    Remove
+                  </Button>
+                )}
               </div>
+            )}
 
-              {showManage && selectedTeacher && (
-                <div className="mt-2 space-y-1">
-                  {teachers[selectedTeacher].map((student) => (
-                    <div
-                      key={student}
-                      className="flex items-center justify-between bg-gray-50 p-2 rounded"
-                    >
-                      {editingStudent === student ? (
-                        <div className="flex-1 flex items-center gap-2">
-                          <input
-                            className="border rounded p-1 flex-1"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            placeholder="Edit name"
-                          />
-                          <Button
-                            onClick={saveEditStudent}
-                            className="bg-green-500 hover:bg-green-600 text-xs px-2 py-1"
-                          >
-                            Save
-                          </Button>
-                          <Button
-                            onClick={cancelEditStudent}
-                            className="bg-gray-300 hover:bg-gray-400 text-xs px-2 py-1"
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      ) : (
-                        <>
-                          <span className="flex-1">{student}</span>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              onClick={() => startEditStudent(student)}
-                              className="bg-amber-400 hover:bg-amber-500 text-xs px-2 py-1"
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              onClick={() => removeStudent(student)}
-                              className="bg-red-400 hover:bg-red-500 text-xs px-2 py-1"
-                            >
-                              Delete
-                            </Button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
+            {/* Activity Logs per teacher */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {Object.keys(teachers).sort((a,b)=>a.localeCompare(b)).map((teacher) => (
+                <div key={teacher} className="border rounded p-3 bg-white">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-semibold">{teacher}</h3>
+                    <Button className="px-3 py-1 bg-gray-200" onClick={() => handleDownloadPDF(teacher)}>
+                      PDF
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {renderLogsByTeacher(teacher)}
+                  </div>
                 </div>
-              )}
-
-              {showManage && !selectedTeacher && (
-                <p className="text-xs text-gray-500 mt-2">
-                  Select a teacher above to manage students.
-                </p>
-              )}
+              ))}
             </div>
+
           </CardContent>
         </Card>
       </div>
-    </div>
+    </Gate>
   );
 }
