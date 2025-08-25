@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent } from "./components/ui/card";
 import { Button } from "./components/ui/button";
 import { X as XIcon } from "lucide-react";
-import { db } from './firebase';
+import { db, authReady } from './firebase';
 
 function Gate({ children }) {
   const PAGE_PASSWORD_HASH = "fc4ec433f9f79454a7e4588eff2d3ff9e3a1f062af1dd806a06e8d839387b386";
@@ -108,6 +108,7 @@ export default function App(){
   const handleSignOut = async () => {
     if(!canSignOut) return;
     try{
+      await authReady;
       const { addDoc, collection, serverTimestamp } = await loadFirestore();
       const nowPT = new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',hour:'numeric',minute:'2-digit',second:'2-digit'}).format(new Date());
       setActive(prev=>({ ...prev, [selectedStudent]: nowPT })); // optimistic
@@ -123,6 +124,7 @@ export default function App(){
   const handleSignIn = async () => {
     if(!canSignIn) return;
     try{
+      await authReady;
       const { addDoc, collection, serverTimestamp } = await loadFirestore();
       const prevOut = active[selectedStudent];
       setActive(prev=>{ const c={...prev}; delete c[selectedStudent]; return c; }); // optimistic
@@ -158,6 +160,7 @@ export default function App(){
     if(!promptPin()) return alert("Incorrect PIN.");
     const last=teacherLogs[teacherLogs.length-1];
     if(!last.id) return;
+    await authReady;
     const { deleteDoc, doc } = await loadFirestore();
     await deleteDoc(doc(db,'rt_logs',last.id));
   };
