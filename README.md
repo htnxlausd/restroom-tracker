@@ -5,7 +5,7 @@ A React + Vite + Tailwind app for restroom out/in tracking with two teachers, pe
 ## Features
 - Select **Teacher** → select **Student** → **Out/In**.
 - Shows entries for **today 8:30 AM – 3:35 PM** only (display filter).
-- **Logs persist** across reloads; **reset at 10:00 PM Pacific**.
+- **Logs persist** across reloads; **reset at 11:59 PM Pacific**.
 - **Download PDF** per teacher (only today’s window).
 - **Manage Students** (Add/Remove) requires **PIN**.
 
