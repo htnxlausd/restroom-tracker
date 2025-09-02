@@ -23,7 +23,7 @@ function defaultState() {
 }
 
 export function ensureSeedData() {
-  const s = load() || defaultState();
+  const s = state || load() || defaultState();
   const seed = {
     'lizette-lozano': [
       'Abner M.','Alexia P.','Angel C.','Carter W.','Emaily C.','Genesis P.','Jonathan E.'
@@ -51,32 +51,32 @@ window.addEventListener('storage', (e) => {
 export function subscribe(cb) { listeners.add(cb); return () => listeners.delete(cb); }
 
 export function getStudents(teacherId) {
-  const s = load() || defaultState();
+  const s = state || load() || defaultState();
   const list = Object.entries(s.teachers[teacherId]?.students || {}).map(([id, v]) => ({ id, ...v }));
   return list.sort((a,b) => a.name.localeCompare(b.name));
 }
 
 export function addStudent(teacherId, name) {
-  const s = load() || defaultState();
+  const s = state || load() || defaultState();
   const id = slugifyName(name);
   s.teachers[teacherId].students[id] = { name, isOut: false };
   save(s);
 }
 export function renameStudent(teacherId, id, newName) {
-  const s = load() || defaultState();
+  const s = state || load() || defaultState();
   if (s.teachers[teacherId].students[id]) {
     s.teachers[teacherId].students[id].name = newName;
     save(s);
   }
 }
 export function removeStudent(teacherId, id) {
-  const s = load() || defaultState();
+  const s = state || load() || defaultState();
   delete s.teachers[teacherId].students[id];
   save(s);
 }
 
-function upsertLog(log) {
-  const s = load() || defaultState();
+function upsertLog(log, state) {
+  const s = state || load() || defaultState();
   const key = log.dateKey;
   if (!s.logs[key]) s.logs[key] = [];
   s.logs[key].push(log);
@@ -85,7 +85,7 @@ function upsertLog(log) {
 
 export function watchTodayLogs(teacherId, cb) {
   const run = () => {
-    const s = load() || defaultState();
+    const s = state || load() || defaultState();
     const key = laDateKey(new Date());
     const list = (s.logs[key] || []).filter(l => l.teacherId === teacherId).sort((a,b) => a.timestamp - b.timestamp);
     cb(list);
@@ -96,13 +96,13 @@ export function watchTodayLogs(teacherId, cb) {
 }
 
 export function signOut(teacher, student) {
-  if (!teacher || !student) throw new Error('Select a teacher and student first.');
-  const s = load() || defaultState();
-  const stu = s.teachers[teacher.id].students[student.id];
-  if (!stu) throw new Error('Student not found.');
-  if (stu.isOut) return;
-  stu.isOut = true;
-  upsertLog({
+    if (!teacher || !student) throw new Error('Select a teacher and student first.');
+    const s = load() || defaultState();
+    const stu = s.teachers[teacher.id].students[student.id];
+    if (!stu) throw new Error('Student not found.');
+    if (stu.isOut) return;
+    stu.isOut = true;
+    upsertLog({
     id: crypto.randomUUID(),
     teacherId: teacher.id,
     teacherName: teacher.name,
@@ -115,13 +115,13 @@ export function signOut(teacher, student) {
 }
 
 export function signIn(teacher, student) {
-  if (!teacher || !student) throw new Error('Select a teacher and student first.');
-  const s = load() || defaultState();
-  const stu = s.teachers[teacher.id].students[student.id];
-  if (!stu) throw new Error('Student not found.');
-  if (!stu.isOut) return;
-  stu.isOut = false;
-  upsertLog({
+    if (!teacher || !student) throw new Error('Select a teacher and student first.');
+    const s = load() || defaultState();
+    const stu = s.teachers[teacher.id].students[student.id];
+    if (!stu) throw new Error('Student not found.');
+    if (!stu.isOut) return;
+    stu.isOut = false;
+    upsertLog({
     id: crypto.randomUUID(),
     teacherId: teacher.id,
     teacherName: teacher.name,
@@ -134,7 +134,7 @@ export function signIn(teacher, student) {
 }
 
 export function deleteLastLogForTeacherToday(teacherId) {
-  const s = load() || defaultState();
+  const s = state || load() || defaultState();
   const key = laDateKey(new Date());
   const list = (s.logs[key] || []).filter(l => l.teacherId === teacherId).sort((a,b) => a.timestamp - b.timestamp);
   if (list.length === 0) return false;
@@ -151,7 +151,7 @@ export function deleteLastLogForTeacherToday(teacherId) {
 }
 
 export function resetAllStatusesAtMidnightIfNeeded() {
-  const s = load() || defaultState();
+  const s = state || load() || defaultState();
   for (const tid of Object.keys(s.teachers)) {
     const students = s.teachers[tid].students;
     for (const sid of Object.keys(students)) {
@@ -170,7 +170,7 @@ export function fetchWeekLogs(teacherId, anyDateInWeek = new Date()) {
     const dd = String(d.getDate()).padStart(2,'0');
     return `${y}-${m}-${dd}`;
   });
-  const s = load() || defaultState();
+  const s = state || load() || defaultState();
   const rows = [];
   for (const k of keys) {
     const arr = (s.logs[k] || []).filter(l => l.teacherId === teacherId).sort((a,b) => a.timestamp - b.timestamp);
@@ -193,7 +193,7 @@ export function clearAll() {
 
 export function watchLogsForDate(teacherId, dateKey, cb) {
   const run = () => {
-    const s = load() || defaultState();
+    const s = state || load() || defaultState();
     const list = (s.logs[dateKey] || []).filter(l => l.teacherId === teacherId).sort((a,b) => a.timestamp - b.timestamp);
     cb(list);
   };
@@ -205,7 +205,7 @@ export function watchLogsForDate(teacherId, dateKey, cb) {
 export function fetchMonthLogs(teacherId, year, month /* 0-indexed */) {
   const first = new Date(year, month, 1);
   const last = new Date(year, month + 1, 0);
-  const s = load() || defaultState();
+  const s = state || load() || defaultState();
   const out = [];
   for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
     if ([1,2,3,4,5].includes(d.getDay())) { // Mon–Fri (Mon=1 ... Fri=5)

@@ -9,7 +9,7 @@ export default function ActivityLog({
   const filtered = logs.filter(l => l.type === viewType);
   const isLastId = logs.length ? logs[logs.length - 1].id : null;
   return (
-    <div className="bg-white rounded-2xl shadow p-4 sm:p-6 flex flex-col">
+    <div className="bg-white rounded-2xl shadow p-4 sm:p-6 flex flex-col min-h-[180px]">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Activity Log — {teacherName || 'Select a teacher'}</h2>
