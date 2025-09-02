@@ -31,15 +31,6 @@ export function addDays(d, days) {
   return copy;
 }
 
-export function formatTime(ts) {
-  const d = ts instanceof Date ? ts : new Date(ts);
-  return format(d, 'h:mm:ss a');
-}
-export function formatDate(ts) {
-  const d = ts instanceof Date ? ts : new Date(ts);
-  return format(d, 'EEE, MMM d');
-}
-
 export function weekDaysMondayToFriday(anyDate = new Date()) {
   const start = startOfWeekMonday(anyDate);
   return Array.from({ length: 5 }).map((_, i) => {
@@ -49,22 +40,11 @@ export function weekDaysMondayToFriday(anyDate = new Date()) {
   });
 }
 
-export function monthWeeksMondayToFriday(year, month /* 0-indexed */) {
-  // Returns array of weeks; each week is an array of up to 5 Mon–Fri date objects inside the month
-  const first = new Date(year, month, 1);
-  const last = new Date(year, month + 1, 0);
-  const weeks = [];
-  let cursor = startOfWeekMonday(first);
-  while (cursor <= last) {
-    const week = [];
-    for (let i = 0; i < 5; i++) {
-      const d = addDays(cursor, i);
-      if (d.getMonth() === month) {
-        week.push({ date: d, key: laDateKey(d) });
-      }
-    }
-    weeks.push(week);
-    cursor = addDays(cursor, 7);
-  }
-  return weeks;
+export function formatTime(ts) {
+  const d = ts instanceof Date ? ts : new Date(ts);
+  return format(d, 'h:mm:ss a');
+}
+export function formatDate(ts) {
+  const d = ts instanceof Date ? ts : new Date(ts);
+  return format(d, 'EEE, MMM d');
 }

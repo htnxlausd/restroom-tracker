@@ -1,4 +1,12 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-:root{color-scheme:light;}
+
+:root { color-scheme: light; }
+
+/* Force desktop-style 2-column grids on iPad */
+.ipad .force-desktop-cols-2 {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 1.5rem !important; /* matches gap-6 */
+}

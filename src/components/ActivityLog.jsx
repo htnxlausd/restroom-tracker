@@ -9,11 +9,11 @@ export default function ActivityLog({
   const filtered = logs.filter(l => l.type === viewType);
   const isLastId = logs.length ? logs[logs.length - 1].id : null;
   return (
-    <div className="bg-white rounded-2xl shadow p-4 sm:p-6 flex flex-col min-h-[180px]">
+    <div className="bg-white rounded-2xl shadow p-4 sm:p-6 flex flex-col min-h-[220px]">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Activity Log — {teacherName || 'Select a teacher'}</h2>
-          <p className="text-xs text-gray-500">Showing entries for today</p>
+          <p className="text-xs text-gray-500">Showing entries for selected day</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -33,7 +33,7 @@ export default function ActivityLog({
 
       <ol className="mt-4 space-y-2 list-decimal list-inside">
         {filtered.length === 0 && (
-          <p className="text-sm text-gray-500">No entries yet.</p>
+          <li className="text-sm text-gray-500 list-none">No entries yet.</li>
         )}
         {filtered.map((l) => {
           const isLast = l.id === isLastId;
@@ -57,6 +57,7 @@ export default function ActivityLog({
           )
         })}
       </ol>
+      <div className="mt-2 text-[10px] text-gray-300">activity-log-rendered</div>
     </div>
   )
 }

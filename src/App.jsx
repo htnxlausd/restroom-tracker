@@ -4,6 +4,7 @@ import TeacherStudentSelect from './components/TeacherStudentSelect';
 import ActivityLog from './components/ActivityLog';
 import SignSheets from './components/SignSheets';
 import SettingsModal from './components/SettingsModal';
+import ErrorBoundary from './components/ErrorBoundary';
 import { TEACHERS, weekDaysMondayToFriday, laDateKey } from './utils';
 import {
   ensureSeedData, getStudents, subscribe, watchLogsForDate,
@@ -111,41 +112,74 @@ export default function App() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-        <div className="bg-white rounded-2xl shadow p-4 sm:p-6">
-          <TeacherStudentSelect
-            selectedTeacherId={selectedTeacherId}
-            onTeacherChange={setSelectedTeacherId}
-            students={students}
-            selectedStudentId={selectedStudentId}
-            onStudentChange={setSelectedStudentId}
-          />
+        {/* Top row: Selection (left) + Tabs+Activity Log (right) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 force-desktop-cols-2">
+          {/* Left: Selection + Out/In */}
+          <div className="bg-white rounded-2xl shadow p-4 sm:p-6">
+            <TeacherStudentSelect
+              selectedTeacherId={selectedTeacherId}
+              onTeacherChange={setSelectedTeacherId}
+              students={students}
+              selectedStudentId={selectedStudentId}
+              onStudentChange={setSelectedStudentId}
+            />
 
-          {errorMsg && (
-            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 text-red-800 text-sm p-2">
-              {errorMsg}
+            {errorMsg && (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 text-red-800 text-sm p-2">
+                {errorMsg}
+              </div>
+            )}
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                onClick={handleOut}
+                className={`px-4 py-2 rounded-lg text-white ${canOut ? 'bg-red-600 hover:bg-red-700' : 'bg-red-300 cursor-not-allowed'}`}
+                disabled={!canOut}
+              >
+                Out
+              </button>
+              <button
+                onClick={handleIn}
+                className={`px-4 py-2 rounded-lg text-white ${canIn ? 'bg-green-600 hover:bg-green-700' : 'bg-green-300 cursor-not-allowed'}`}
+                disabled={!canIn}
+              >
+                In
+              </button>
             </div>
-          )}
-
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button
-              onClick={handleOut}
-              className={`px-4 py-2 rounded-lg text-white ${canOut ? 'bg-red-600 hover:bg-red-700' : 'bg-red-300 cursor-not-allowed'}`}
-              disabled={!canOut}
-            >
-              Out
-            </button>
-            <button
-              onClick={handleIn}
-              className={`px-4 py-2 rounded-lg text-white ${canIn ? 'bg-green-600 hover:bg-green-700' : 'bg-green-300 cursor-not-allowed'}`}
-              disabled={!canIn}
-            >
-              In
-            </button>
           </div>
+
+          {/* Right: Tabs + Activity Log */}
+          <ErrorBoundary>
+            <div className="space-y-4">
+              {/* Weekday Tabs */}
+              <div className="bg-white rounded-2xl shadow p-2">
+                <div className="flex gap-2">
+                  {weekdayTabs.map(tab => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setActiveDateKey(tab.key)}
+                      className={`px-3 py-1.5 rounded-lg border text-sm ${activeDateKey===tab.key ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300 text-gray-800 hover:bg-gray-50'}`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Activity Log */}
+              <ActivityLog
+                teacherName={selectedTeacher?.name}
+                logs={logs}
+                viewType={viewType}
+                setViewType={setViewType}
+                onDeleteLast={handleDeleteLast}
+              />
+            </div>
+          </ErrorBoundary>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left: Sign sheets */}
+        {/* Bottom: Sign sheets and downloads */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 force-desktop-cols-2">
           <div className="order-2 lg:order-1">
             <SignSheets
               lizetteStudents={lizetteStudents}
@@ -153,32 +187,7 @@ export default function App() {
             />
           </div>
 
-          {/* Right: Weekday Tabs + Activity Log + Settings + Download */}
           <div className="order-1 lg:order-2 space-y-4">
-            {/* Weekday Tabs */}
-            <div className="bg-white rounded-2xl shadow p-2">
-              <div className="flex gap-2">
-                {weekdayTabs.map(tab => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveDateKey(tab.key)}
-                    className={`px-3 py-1.5 rounded-lg border text-sm ${activeDateKey===tab.key ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300 text-gray-800 hover:bg-gray-50'}`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Activity Log — always rendered below tabs */}
-            <ActivityLog
-              teacherName={selectedTeacher?.name}
-              logs={logs}
-              viewType={viewType}
-              setViewType={setViewType}
-              onDeleteLast={handleDeleteLast}
-            />
-
             <div className="flex justify-end">
               <button
                 onClick={() => setSettingsOpen(true)}
