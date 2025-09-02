@@ -12,7 +12,7 @@ export default function ActivityLog({
     <div className="bg-white rounded-2xl shadow p-4 sm:p-6 flex flex-col">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Activity Log — {teacherName || '—'}</h2>
+          <h2 className="text-lg font-semibold">Activity Log — {teacherName || 'Select a teacher'}</h2>
           <p className="text-xs text-gray-500">Showing entries for today</p>
         </div>
         <div className="flex gap-2">
