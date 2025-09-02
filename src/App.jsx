@@ -4,14 +4,14 @@ import TeacherStudentSelect from './components/TeacherStudentSelect';
 import ActivityLog from './components/ActivityLog';
 import SignSheets from './components/SignSheets';
 import SettingsModal from './components/SettingsModal';
-import { TEACHERS } from './utils';
+import { TEACHERS, weekDaysMondayToFriday, laDateKey } from './utils';
 import {
-  ensureSeedData, getStudents, subscribe, watchTodayLogs,
+  ensureSeedData, getStudents, subscribe, watchLogsForDate,
   addStudent, renameStudent, removeStudent,
   signIn, signOut, deleteLastLogForTeacherToday,
-  resetAllStatusesAtMidnightIfNeeded, fetchWeekLogs
+  fetchMonthLogs, clearAll
 } from './localData';
-import { generateWeekPdf } from './pdf';
+import { generateMonthPdf } from './pdf';
 
 export default function App() {
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
@@ -23,6 +23,8 @@ export default function App() {
   const [lizetteStudents, setLizetteStudents] = useState([]);
   const [yadiraStudents, setYadiraStudents] = useState([]);
 
+  const [weekdayTabs, setWeekdayTabs] = useState(weekDaysMondayToFriday(new Date()));
+  const [activeDateKey, setActiveDateKey] = useState(laDateKey(new Date()));
   const [logs, setLogs] = useState([]);
   const [viewType, setViewType] = useState('out');
 
@@ -75,22 +77,22 @@ export default function App() {
     try { deleteLastLogForTeacherToday(selectedTeacherId); }
     catch (e) { setErrorMsg('Failed to delete last log.'); }
   }
+  function handleDownload(teacher) {
+    const now = new Date();
+    const logs = fetchMonthLogs(teacher.id, now.getFullYear(), now.getMonth());
+    const doc = generateMonthPdf(teacher.name, logs, now.getFullYear(), now.getMonth());
+    doc.save(`${teacher.name.replace(/\s+/g,'_')}_Restroom_Tracker_${now.toLocaleString(undefined,{month:'long',year:'numeric'})}.pdf`);
+  }
   function handleClear() {
-      if (confirm('This will clear all data on this device (students, statuses, and logs). Continue?')) {
-        clearAll();
-        ensureSeedData(); // re-seed default rosters after clearing
-        setSelectedTeacherId('');
-        setSelectedStudentId('');
-        setLogs([]);
-        setLizetteStudents(getStudents('lizette-lozano'));
-        setYadiraStudents(getStudents('yadira-reina'));
-      }
+    if (confirm('This will clear all data on this device (students, statuses, and logs). Continue?')) {
+      clearAll();
+      ensureSeedData();
+      setSelectedTeacherId('');
+      setSelectedStudentId('');
+      setLogs([]);
+      setLizetteStudents(getStudents('lizette-lozano'));
+      setYadiraStudents(getStudents('yadira-reina'));
     }
-
-    function handleDownload(teacher) {
-    const logs = fetchWeekLogs(teacher.id, new Date());
-    const doc = generateWeekPdf(teacher.name, logs, new Date());
-    doc.save(`${teacher.name.replace(/\s+/g,'_')}_Restroom_Tracker_Week.pdf`);
   }
 
   return (
@@ -98,6 +100,13 @@ export default function App() {
       <header className="bg-white sticky top-0 z-10 border-b">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <h1 className="text-xl sm:text-2xl font-bold">Restroom Tracker | Taft DHH</h1>
+          <button
+            onClick={handleClear}
+            className="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50"
+            title="Clear all data"
+          >
+            Clear
+          </button>
         </div>
       </header>
 
@@ -136,6 +145,7 @@ export default function App() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left: Sign sheets */}
           <div className="order-2 lg:order-1">
             <SignSheets
               lizetteStudents={lizetteStudents}
@@ -143,7 +153,24 @@ export default function App() {
             />
           </div>
 
+          {/* Right: Weekday Tabs + Activity Log + Settings + Download */}
           <div className="order-1 lg:order-2 space-y-4">
+            {/* Weekday Tabs */}
+            <div className="bg-white rounded-2xl shadow p-2">
+              <div className="flex gap-2">
+                {weekdayTabs.map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveDateKey(tab.key)}
+                    className={`px-3 py-1.5 rounded-lg border text-sm ${activeDateKey===tab.key ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300 text-gray-800 hover:bg-gray-50'}`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Activity Log — always rendered below tabs */}
             <ActivityLog
               teacherName={selectedTeacher?.name}
               logs={logs}
@@ -151,6 +178,7 @@ export default function App() {
               setViewType={setViewType}
               onDeleteLast={handleDeleteLast}
             />
+
             <div className="flex justify-end">
               <button
                 onClick={() => setSettingsOpen(true)}
@@ -162,7 +190,7 @@ export default function App() {
             </div>
 
             <div className="bg-white rounded-2xl shadow p-4 sm:p-6">
-              <h3 className="font-semibold mb-3">Download Weekly PDFs (Mon–Fri)</h3>
+              <h3 className="font-semibold mb-3">Download Month PDF (Mon–Fri grouped by week)</h3>
               <div className="flex flex-wrap gap-3">
                 {TEACHERS.map(t => (
                   <button
